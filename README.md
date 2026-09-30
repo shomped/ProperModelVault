@@ -39,5 +39,6 @@ print(f"Saved classifier as version {version}")
 
 # load the latest version
 empty_model = MyNet()
-loaded_model = vault.load_latest("classifier", model=empty_model)
+loaded_model = vault.load_latest("classifier", model=empty_model, device="cuda", strict=False)
+
 ```
