@@ -126,6 +126,9 @@ class ModelVault:
             expected = checksum_path.read_text().strip()
             actual = hashlib.sha256(model_path.read_bytes()).hexdigest()
             if actual != expected:
+                logger.error(
+                        "Integrity check failed for %s v%d. Expected: %s, got: %s",
+                        name,version,expected[:12],actual[:12]
                 raise RuntimeError(f"Checksum mismatch for {name} v{version}")
 
         result = self._serializer.load(model_path, model=model)
