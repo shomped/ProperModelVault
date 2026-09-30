@@ -1,7 +1,6 @@
 import hashlib
 import json
 import logging
-import pickle
 import shutil
 import tempfile
 from pathlib import Path
@@ -15,16 +14,6 @@ class ModelSerializer(Protocol):
     def load(self, path: Path, model: Optional[Any] = None) -> Any: ...
     @property
     def extension(self) -> str: ...
-
-
-class PickleSerializer:
-    extension = ".pkl"
-    def save(self, model: Any, path: Path) -> None:
-        with open(path, "wb") as f:
-            pickle.dump(model, f)
-    def load(self, path: Path, model: Optional[Any] = None) -> Any:
-        with open(path, "rb") as f:
-            return pickle.load(f)
 
 
 class SafeTensorsSerializer:
@@ -47,13 +36,13 @@ class SafeTensorsSerializer:
 class ModelVault:
     """
     file-system based model registry with integrity checks
-    supports pluggable serialisers like pickle or safetenzors
+    uses safetenzors for secure weight storage
     uses atomic writes to prevent data corruotion during saves
     """
     def __init__(self, base_dir: str, serializer: Optional[ModelSerializer] = None):
         self.base_path = Path(base_dir).expanduser().resolve()
         self.base_path.mkdir(parents=True, exist_ok=True)
-        self._serializer = serializer or PickleSerializer()
+        self._serializer = serializer or SafeTensorsSerializer()
 
     def _model_dir(self, name: str) -> Path:
         return self.base_path / name
@@ -184,5 +173,5 @@ class ModelVault:
                 pass
                 
         model_dir = self._model_dir(name)
-        if not any(model_dir.iterdir()):
+        if model_dir.is_dir() and not any(model_dir.iterdir()):
             model_dir.rmdir()
