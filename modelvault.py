@@ -1,37 +1,39 @@
-import os
 import json
 import pickle
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
+
+@runtime_checkable
+class ModelSerializer(Protocol):
+    def save(self, model: Any, path: Path) -> None: ...
+    def load(self, path: Path) -> Any: ...
+    @property
+    def extension(self) -> str: ...
+
+
+class PickleSerializer:
+    extension = ".pkl"
+    def save(self, model: Any, path: Path) -> None:
+        with open(path, "wb") as f:
+            pickle.dump(model, f)
+    def load(self, path: Path) -> Any:
+        with open(path, "rb") as f:
+            return pickle.load(f)
 
 class ModelVault:
-    """
-    A simple file‑system based model registry.
-    Models are stored as pickled objects alongside a JSON metadata file.
-    """
-
-    def __init__(self, base_dir: str):
-        """
-        Initialise the vault.
-
-        Args:
-            base_dir: Directory where all models will be stored.
-        """
+    def __init__(self, base_dir: str, serializer: Optional[ModelSerializer] = None):
         self.base_path = Path(base_dir).expanduser().resolve()
         self.base_path.mkdir(parents=True, exist_ok=True)
-
+        self._serializer = serializer or PickleSerializer()
     def _model_dir(self, name: str) -> Path:
         """Return the directory for a given model name."""
         return self.base_path / name
-
     def _metadata_path(self, name: str, version: int) -> Path:
         """Path to the metadata file for a specific version."""
         return self._model_dir(name) / f"v{version}_meta.json"
-
     def _model_path(self, name: str, version: int) -> Path:
-        """Path to the pickled model for a specific version."""
-        return self._model_dir(name) / f"v{version}_model.pkl"
+        return self._model_dir(name) / f"v{version}_model{self._serializer.extension}"
 
     def _next_version(self, name: str) -> int:
         """Determine the next version number for a model."""
@@ -49,12 +51,9 @@ class ModelVault:
         model_dir = self._model_dir(name)
         model_dir.mkdir(parents=True, exist_ok=True)
 
-        # Serialize model
         model_path = self._model_path(name, version)
-        with open(model_path, "wb") as f:
-            pickle.dump(model, f)
+        self._serializer.save(model, model_path)
 
-        # Store metadata
         meta = metadata or {}
         meta.update({"version": version})
         meta_path = self._metadata_path(name, version)
@@ -73,8 +72,8 @@ class ModelVault:
         model_path = self._model_path(name, version)
         if not model_path.is_file():
             raise FileNotFoundError(f"Model {name} version {version} not found.")
-        with open(model_path, "rb") as f:
-            return pickle.load(f)
+        
+        return self._serializer.load(model_path)
 
     def load_latest(self, name: str) -> Any:
         """Load the most recent version of a model."""
@@ -90,11 +89,16 @@ class ModelVault:
         model_dir = self._model_dir(name)
         if not model_dir.is_dir():
             return []
+        
         versions = []
+        ext = self._serializer.extension
+        suffix = f"_model{ext}"
+        
         for file in model_dir.iterdir():
-            if file.suffix == ".pkl" and file.stem.startswith("v"):
+            if file.name.startswith("v") and file.name.endswith(suffix):
                 try:
-                    v = int(file.stem.split("_")[0][1:])
+                    v_str = file.name[1:-len(suffix)]
+                    v = int(v_str)
                     versions.append(v)
                 except ValueError:
                     continue
@@ -118,11 +122,13 @@ class ModelVault:
         """
         model_path = self._model_path(name, version)
         meta_path = self._metadata_path(name, version)
+        
         for p in (model_path, meta_path):
             try:
                 p.unlink()
             except FileNotFoundError:
                 pass
+                
         # Clean up model directory if empty
         model_dir = self._model_dir(name)
         if not any(model_dir.iterdir()):
