@@ -101,10 +101,10 @@ class ModelVault:
         logger.info("Saved %s v%d (sha256=%s)", name, version, sha[:12])
         return version
 
-    def load(self, name: str, version: int, model: Optional[Any] = None) -> Any:
+    def load(self, name: str, version: int, **kwargs: Any) -> Any:
         """
         load a specific version of a model with checksum verification
-        if using safetenzors, provide the model architecture via 'model' arg
+        passes any extra arguments to the serializer for flexibility
         """
         model_path = self._model_path(name, version)
         if not model_path.is_file():
@@ -121,16 +121,16 @@ class ModelVault:
                             )
                 raise RuntimeError(f"Checksum mismatch for {name} v{version}")
 
-        result = self._serializer.load(model_path, model=model)
+        result = self._serializer.load(model_path, **kwargs)
         logger.info("Loaded %s v%d", name, version)
         return result
 
-    def load_latest(self, name: str, model: Optional[Any] = None) -> Any:
+    def load_latest(self, name: str, **kwargs: Any) -> Any:
         """load the most recent version of a model"""
         versions = self.list_versions(name)
         if not versions:
             raise FileNotFoundError(f"No versions found for model {name}.")
-        return self.load(name, max(versions), model=model)
+        return self.load(name, max(versions), **kwargs)
 
     def list_versions(self, name: str) -> List[int]:
         """list all saved versions for a model, sorted ascending"""
