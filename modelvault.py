@@ -45,17 +45,20 @@ class SafeTensorsSerializer:
         return model
 
 class ModelVault:
+    """
+    file-system based model registry with integrity checks
+    supports pluggable serialisers like pickle or safetenzors
+    uses atomic writes to prevent data corruotion during saves
+    """
     def __init__(self, base_dir: str, serializer: Optional[ModelSerializer] = None):
         self.base_path = Path(base_dir).expanduser().resolve()
         self.base_path.mkdir(parents=True, exist_ok=True)
         self._serializer = serializer or PickleSerializer()
 
     def _model_dir(self, name: str) -> Path:
-        """Return the directory for a given model name."""
         return self.base_path / name
 
     def _metadata_path(self, name: str, version: int) -> Path:
-        """Path to the metadata file for a specific version."""
         return self._model_dir(name) / f"v{version}_meta.json"
 
     def _model_path(self, name: str, version: int) -> Path:
@@ -65,16 +68,13 @@ class ModelVault:
         return self._model_dir(name) / f"v{version}_sha256.txt"
 
     def _next_version(self, name: str) -> int:
-        """Determine the next version number for a model."""
         versions = self.list_versions(name)
         return max(versions) + 1 if versions else 1
 
     def save(self, name: str, model: Any, metadata: Optional[Dict] = None) -> int:
         """
-        Save a model with optional metadata.
-
-        Returns:
-            The version number assigned to the saved model.
+        save a model with optional metadata and sha-256 checksum
+        performs atomic write using temp files to ensure integriy
         """
         version = self._next_version(name)
         model_dir = self._model_dir(name)
@@ -114,10 +114,8 @@ class ModelVault:
 
     def load(self, name: str, version: int, model: Optional[Any] = None) -> Any:
         """
-        Load a specific version of a model.
-
-        Raises:
-            FileNotFoundError if the requested version does not exist.
+        load a specific version of a model with checksum verification
+        if using safetenzors, provide the model architecture via 'model' arg
         """
         model_path = self._model_path(name, version)
         if not model_path.is_file():
@@ -135,16 +133,14 @@ class ModelVault:
         return result
 
     def load_latest(self, name: str, model: Optional[Any] = None) -> Any:
-        """Load the most recent version of a model."""
+        """load the most recent version of a model"""
         versions = self.list_versions(name)
         if not versions:
             raise FileNotFoundError(f"No versions found for model {name}.")
         return self.load(name, max(versions), model=model)
 
     def list_versions(self, name: str) -> List[int]:
-        """
-        List all saved versions for a model, sorted ascending.
-        """
+        """list all saved versions for a model, sorted ascending"""
         model_dir = self._model_dir(name)
         if not model_dir.is_dir():
             return []
@@ -164,11 +160,7 @@ class ModelVault:
         return sorted(versions)
 
     def get_metadata(self, name: str, version: int) -> Dict:
-        """
-        Retrieve metadata for a specific model version.
-
-        Returns an empty dict if metadata is missing.
-        """
+        """retrieve metadata for a specific model version"""
         meta_path = self._metadata_path(name, version)
         if not meta_path.is_file():
             return {}
@@ -176,9 +168,7 @@ class ModelVault:
             return json.load(f)
 
     def delete_version(self, name: str, version: int) -> None:
-        """
-        Remove a specific version of a model and its metadata.
-        """
+        """remove a specific version of a model and its metadata"""
         model_path = self._model_path(name, version)
         meta_path = self._metadata_path(name, version)
         checksum_path = self._checksum_path(name, version)
@@ -189,7 +179,6 @@ class ModelVault:
             except FileNotFoundError:
                 pass
                 
-        # Clean up model directory if empty
         model_dir = self._model_dir(name)
         if not any(model_dir.iterdir()):
             model_dir.rmdir()
