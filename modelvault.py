@@ -1,11 +1,13 @@
 import hashlib
 import json
+import logging
 import pickle
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
+logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class ModelSerializer(Protocol):
@@ -107,6 +109,7 @@ class ModelVault:
             shutil.move(str(tmp_checksum), str(final_checksum))
             shutil.move(str(tmp_meta), str(final_meta))
 
+        logger.info("Saved %s v%d (sha256=%s)", name, version, sha[:12])
         return version
 
     def load(self, name: str, version: int, model: Optional[Any] = None) -> Any:
@@ -127,7 +130,9 @@ class ModelVault:
             if actual != expected:
                 raise RuntimeError(f"Checksum mismatch for {name} v{version}")
 
-        return self._serializer.load(model_path, model=model)
+        result = self._serializer.load(model_path, model=model)
+        logger.info("Loaded %s v%d", name, version)
+        return result
 
     def load_latest(self, name: str, model: Optional[Any] = None) -> Any:
         """Load the most recent version of a model."""
