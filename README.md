@@ -1,26 +1,43 @@
-# ModelVault
+# ProperModelVault
 
 ## Description
-ModelVault is a lightweight Python library for versioning, storing, and retrieving machine learning models locally with simple metadata tracking.
+ProperModelVault is a secure, file-system based registry for machine learning models. It focuses on data integrity and safe storage using atomic writes and SHA-256 checksums. By default, it uses `safetensors` to avoid the security risks of pickle while ensuring fast loading speeds (the original ModelVault used pickle!)
 
 ## Features
-- Save models with automatic versioning  
-- Load specific versions or the latest model  
-- Store metadata (author, metrics, tags)  
-- List available models and versions  
-- Clean up old versions  
+- **Atomic Saves**: Prevents data corruption by writing to temp files first.
+- **Integrity Checks**: Automatically verifies SHA-256 hashes on every load.
+- **Safe Serialization**: Uses `safetensors` by default (no code execution risks).
+- **Version Control**: Automatic versioning with metadata tracking.
+- **Pluggable Backend**: Easy to swap serializers via Protocol interface.
 
-## Installation
+## Why not pickle?
+Pickle is unsafe because it can execute arbitrary code during loading. ModelVault defaults to `safetensors` to keep your environment secure and your loads fast.
+
+## Requirements
 ```bash
-pip install modelvault
+pip install torch safetensors
 ```
 
-## Usage
+## Quick Start
 ```python
+import torch.nn as nn
 from modelvault import ModelVault
 
+# define your model architecture
+class MyNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer = nn.Linear(10, 1)
+
+# initialize vault
 vault = ModelVault("./models")
-vault.save("my_model", model_object, {"accuracy": 0.92, "author": "Alice"})
-latest = vault.load_latest("my_model")
-specific = vault.load("my_model", version=2)
-print(vault.list_versions("my_model"))
+
+# save a model instance
+model = MyNet()
+version = vault.save("classifier", model, metadata={"accuracy": 0.92, "epoch": 10})
+print(f"Saved classifier as version {version}")
+
+# load the latest version
+empty_model = MyNet()
+loaded_model = vault.load_latest("classifier", model=empty_model)
+```
