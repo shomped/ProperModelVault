@@ -129,6 +129,7 @@ class ModelVault:
                 logger.error(
                         "Integrity check failed for %s v%d. Expected: %s, got: %s",
                         name,version,expected[:12],actual[:12]
+                            )
                 raise RuntimeError(f"Checksum mismatch for {name} v{version}")
 
         result = self._serializer.load(model_path, model=model)
