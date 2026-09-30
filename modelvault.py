@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 @runtime_checkable
 class ModelSerializer(Protocol):
     def save(self, model: Any, path: Path) -> None: ...
-    def load(self, path: Path) -> Any: ...
+    def load(self, path: Path, model: Optional[Any] = None) -> Any: ...
     @property
     def extension(self) -> str: ...
 
@@ -20,9 +20,28 @@ class PickleSerializer:
     def save(self, model: Any, path: Path) -> None:
         with open(path, "wb") as f:
             pickle.dump(model, f)
-    def load(self, path: Path) -> Any:
+    def load(self, path: Path, model: Optional[Any] = None) -> Any:
         with open(path, "rb") as f:
             return pickle.load(f)
+
+
+class SafeTensorsSerializer:
+    extension = ".safetensors"
+    def save(self, model: Any, path: Path) -> None:
+        from safetensors.torch import save_file
+        if not hasattr(model, 'state_dict'):
+            raise ValueError("Model must have a state_dict method")
+        save_file(model.state_dict(), str(path))
+
+    def load(self, path: Path, model: Optional[Any] = None) -> Any:
+        from safetensors.torch import load_file
+        if model is None:
+            raise ValueError("SafeTensors requires a model instance to load weights into")
+        
+        state_dict = load_file(str(path))
+        model.load_state_dict(state_dict, strict=False)
+        return model
+
 class ModelVault:
     def __init__(self, base_dir: str, serializer: Optional[ModelSerializer] = None):
         self.base_path = Path(base_dir).expanduser().resolve()
@@ -90,7 +109,7 @@ class ModelVault:
 
         return version
 
-    def load(self, name: str, version: int) -> Any:
+    def load(self, name: str, version: int, model: Optional[Any] = None) -> Any:
         """
         Load a specific version of a model.
 
@@ -108,14 +127,14 @@ class ModelVault:
             if actual != expected:
                 raise RuntimeError(f"Checksum mismatch for {name} v{version}")
 
-        return self._serializer.load(model_path)
+        return self._serializer.load(model_path, model=model)
 
-    def load_latest(self, name: str) -> Any:
+    def load_latest(self, name: str, model: Optional[Any] = None) -> Any:
         """Load the most recent version of a model."""
         versions = self.list_versions(name)
         if not versions:
             raise FileNotFoundError(f"No versions found for model {name}.")
-        return self.load(name, max(versions))
+        return self.load(name, max(versions), model=model)
 
     def list_versions(self, name: str) -> List[int]:
         """
