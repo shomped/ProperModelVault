@@ -58,8 +58,13 @@ class ModelVault:
         version = self._next_version(name)
         model_dir = self._model_dir(name)
         model_dir.mkdir(parents=True, exist_ok=True)
-        meta = metadata or {}
+
+        if self._model_path(name, version).exists():
+            raise FileExistsError(f"Version {version} of '{name}' already exists.")
+
+        meta = dict(metadata or {})
         meta.update({"version": version})
+        
         with tempfile.TemporaryDirectory(dir=str(model_dir)) as tmp_dir:
             tmp_path = Path(tmp_dir)
             
@@ -69,13 +74,16 @@ class ModelVault:
             sha = hashlib.sha256(tmp_model.read_bytes()).hexdigest()
             tmp_checksum = tmp_path / "sha256.txt"
             tmp_checksum.write_text(sha)
+            
             tmp_meta = tmp_path / "meta.json"
             meta["sha256"] = sha
             with open(tmp_meta, "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2)
+            
             final_model = self._model_path(name, version)
             final_checksum = self._checksum_path(name, version)
             final_meta = self._metadata_path(name, version)
+            
             shutil.move(str(tmp_model), str(final_model))
             shutil.move(str(tmp_checksum), str(final_checksum))
             shutil.move(str(tmp_meta), str(final_meta))
